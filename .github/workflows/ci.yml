@@ -1,0 +1,38 @@
+# Проверки на каждый толчок в репозиторий.
+#
+# Сеть здесь не нужна: тесты движка работают на заглушках, а живые сценарии
+# (`npm run verify`) остаются ручными — они ходят в Туту, и падение апстрима
+# не должно красить сборку в красный.
+name: Проверки
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Зависимости интерфейса
+        run: npm --prefix app ci
+
+      - name: Типы интерфейса
+        run: npm --prefix app exec tsc -- --noEmit -p app
+
+      - name: Тесты движка
+        run: node --test "src/**/*.test.ts"
+
+      - name: Тесты интерфейса
+        run: npm --prefix app test
+
+      - name: Сборка
+        run: npm --prefix app run build

@@ -1,0 +1,43 @@
+# Выкладка на стенд после зелёных проверок.
+#
+# Сервер тянет код сам из этого же репозитория, поэтому здесь нет ни архивов,
+# ни копирования файлов: только команда обновиться и перезапуститься.
+name: Выкладка
+
+on:
+  workflow_run:
+    workflows: [Проверки]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    # Красная сборка на стенд не едет.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ключ доступа
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Обновить и перезапустить
+        run: |
+          ssh -i ~/.ssh/id_ed25519 root@"${{ secrets.DEPLOY_HOST }}" '
+            set -e
+            cd /opt/sklejka/app-src
+            sudo -u sklejka git pull --ff-only origin main
+            sudo -u sklejka npm --prefix app ci --silent
+            sudo -u sklejka npm --prefix app run build
+            systemctl restart sklejka
+          '
+
+      - name: Проверить, что стенд ожил
+        run: |
+          sleep 5
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://skleika.lol/api/config)
+          echo "стенд ответил: $code"
+          test "$code" = "200"
