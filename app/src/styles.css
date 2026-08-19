@@ -979,6 +979,16 @@ a.ghost {
  /* Цвет линии задаёт гостя, начертание — вид сообщения. */
 .flow.direct { opacity: 0.9; }
 
+/* Линия не возникает, а прорисовывается: маршрут — это результат работы,
+   и мгновенное появление съедает единственный момент, где это видно.
+   Штриховку использовать нельзя — у составных она несёт смысл, поэтому
+   вход сделан толщиной и прозрачностью. */
+.flow { animation: draw 0.5s ease-out backwards; }
+
+@keyframes draw {
+  from { opacity: 0; stroke-width: 0.6; }
+}
+
 .flow.composed {
   stroke-dasharray: 8 6;
   animation: drift 1.1s linear infinite;
@@ -994,7 +1004,18 @@ a.ghost {
 
 @keyframes drift { to { stroke-dashoffset: -26; } }
 
-.city-dot { cursor: pointer; stroke-width: 3; transition: r 0.2s, fill 0.35s; }
+.city-dot {
+  cursor: pointer;
+  stroke-width: 3;
+  transition: r 0.2s, fill 0.35s;
+  animation: pop 0.35s ease-out backwards;
+}
+
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.4); }
+}
+
+.city-dot { transform-box: fill-box; transform-origin: center; }
 
 /* Недостижимый город — полый кружок: цвет остаётся его, но заливки нет. */
 .city-dot.out { stroke-dasharray: 3 3; }
@@ -1849,7 +1870,10 @@ a.ghost {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .flow,
   .flow.composed,
+  .city-dot,
+  .metric-value,
   .pulse,
   .pulse-ring,
   .city-dot.pending {
@@ -2901,3 +2925,41 @@ a.ghost {
 
 /* Подпись роли в документации была на грани читаемости. */
 .docs-role-tag { font-size: 12px; }
+
+/* ---------------- Прогресс сбора ответов ---------------- */
+
+.rsvp-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  background: var(--paper);
+  border-radius: var(--radius);
+}
+
+.rsvp-progress.done { background: var(--lime); }
+
+.rsvp-ring { width: 52px; height: 52px; flex: 0 0 auto; transform: rotate(-90deg); }
+
+.ring-track { fill: none; stroke: var(--line); stroke-width: 7; }
+
+.ring-fill {
+  fill: none;
+  stroke: var(--purple-deep);
+  stroke-width: 7;
+  stroke-linecap: round;
+  /* Доля меняется по мере ответов, и переход делает это заметным. */
+  transition: stroke-dasharray 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rsvp-progress.done .ring-fill { stroke: var(--ink); }
+
+.rsvp-progress-text { display: flex; flex-direction: column; gap: 2px; }
+.rsvp-progress-text b { font-family: var(--display); font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.rsvp-progress-text span { font-size: 13px; color: var(--muted); }
+.rsvp-progress.done .rsvp-progress-text span { color: var(--ink); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-fill { transition: none; }
+}

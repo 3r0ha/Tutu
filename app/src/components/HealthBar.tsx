@@ -1,5 +1,5 @@
 import type { EventPlan, Leg, ViewMode } from '../types.ts';
-import { formatMoney } from './JourneyCard.tsx';
+import { useCountUp } from '../useCountUp.ts';
 import {
   explainMetric,
   guestsForMetric,
@@ -66,7 +66,7 @@ export function HealthBar({
           metric="reached"
           value={
             <>
-              {reachable}
+              <Counted value={reachable} />
               <span className="of">/{summary.guests}</span>
             </>
           }
@@ -77,7 +77,7 @@ export function HealthBar({
 
         <Metric
           metric="unreached"
-          value={unreachable}
+          value={<Counted value={unreachable} />}
           warn={unreachable > 0}
           label={leg === 'outbound' ? 'не доедут' : 'не уедут'}
           opened={opened}
@@ -87,7 +87,7 @@ export function HealthBar({
         {hasReturn && (
           <Metric
             metric="stranded"
-            value={summary.stranded}
+            value={<Counted value={summary.stranded} />}
             warn={summary.stranded > 0}
             label="застрянут"
             opened={opened}
@@ -97,7 +97,9 @@ export function HealthBar({
 
         {/* Сумма — не про людей, разбирать её на имена нечем. */}
         <div className="metric plain">
-          <span className="metric-value">{formatMoney(cost)}</span>
+          <span className="metric-value">
+            <Counted value={Math.round(cost)} /> ₽
+          </span>
           <span className="metric-label">
             {hasReturn && anyReturnFound ? 'дорога в оба конца' : 'только дорога туда'}
           </span>
@@ -105,7 +107,7 @@ export function HealthBar({
 
         <Metric
           metric="atRisk"
-          value={atRisk}
+          value={<Counted value={atRisk} />}
           warn={atRisk > 0}
           label="на грани срыва"
           opened={opened}
@@ -134,7 +136,9 @@ export function HealthBar({
 
       {unlocked > 0 && !opened && (
         <div className="unlock">
-          <strong>+{unlocked}</strong>
+          <strong>
+            +<Counted value={unlocked} />
+          </strong>
           <span>
             {unlocked === 1 ? 'гостя открывает склейка' : 'гостей открывает склейка'} — прямого
             сообщения у них нет
@@ -143,6 +147,11 @@ export function HealthBar({
       )}
     </footer>
   );
+}
+
+/** Число, доезжающее до значения. Вынесено, чтобы каждый показатель считался сам. */
+function Counted({ value }: { value: number }) {
+  return <>{useCountUp(value).toLocaleString('ru-RU')}</>;
 }
 
 function Metric({

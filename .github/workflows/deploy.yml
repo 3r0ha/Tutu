@@ -29,7 +29,10 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 root@"${{ secrets.DEPLOY_HOST }}" '
             set -e
             cd /opt/sklejka/app-src
-            sudo -u sklejka git pull --ff-only origin main
+            # Сброс, а не слияние: на сервере рабочая копия без своих правок,
+            # а история в репозитории может быть переписана.
+            sudo -u sklejka git fetch -q origin
+            sudo -u sklejka git reset -q --hard origin/main
             sudo -u sklejka npm --prefix app ci --silent
             sudo -u sklejka npm --prefix app run build
             systemctl restart sklejka
