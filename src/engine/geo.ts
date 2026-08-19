@@ -11,6 +11,8 @@
  * а не неверного совета.
  */
 
+import type { McpClient } from '../mcp/client.ts';
+import { CITY_COORDS } from './cities.ts';
 import { HUBS } from './hubs.ts';
 import { completeCached, extractJson, getProvider } from '../ai/provider.ts';
 
@@ -64,6 +66,20 @@ const SMALL_TOWNS: ReadonlyArray<{ name: string; lat: number; lon: number }> = [
   { name: 'Юрьев-Польский', lat: 56.5, lon: 39.68 },
 ];
 
+/**
+ * Даты для запроса отелей.
+ *
+ * Нужны только чтобы поиск отработал: координаты гостиниц от дат не зависят.
+ * Ближайшее будущее — чтобы выдача была непустой.
+ */
+const HOTEL_PROBE_IN = probeDate(30);
+const HOTEL_PROBE_OUT = probeDate(31);
+
+function probeDate(daysAhead: number): string {
+  const at = new Date(Date.now() + daysAhead * 86_400_000);
+  return at.toISOString().slice(0, 10);
+}
+
 const TABLE = new Map<string, Coordinates>();
 for (const hub of HUBS) {
   TABLE.set(normalize(hub.name), { lat: hub.lat, lon: hub.lon, source: 'catalog' });
@@ -71,10 +87,18 @@ for (const hub of HUBS) {
 for (const town of SMALL_TOWNS) {
   TABLE.set(normalize(town.name), { lat: town.lat, lon: town.lon, source: 'catalog' });
 }
+// Снятое у Туту кладётся последним и перекрывает записанное руками: там живые
+// данные, здесь — память составителя.
+for (const [name, lat, lon] of CITY_COORDS) {
+  TABLE.set(normalize(name), { lat, lon, source: 'catalog' });
+}
 
 const resolved = new Map<string, Coordinates | null>();
 
-export async function resolveCoordinates(city: string): Promise<Coordinates | null> {
+export async function resolveCoordinates(
+  city: string,
+  mcp?: McpClient,
+): Promise<Coordinates | null> {
   const key = normalize(city);
 
   const known = TABLE.get(key);
@@ -82,16 +106,70 @@ export async function resolveCoordinates(city: string): Promise<Coordinates | nu
 
   if (resolved.has(key)) return resolved.get(key) ?? null;
 
-  const guessed = await askModel(city);
-  resolved.set(key, guessed);
-  return guessed;
+  // Сначала спрашиваем сами данные, и только потом модель. Отели Туту несут
+  // координаты каждого объекта, а медиана по ним и есть положение города:
+  // Гороховец, Мышкин и Териберка определяются так с точностью до сотых
+  // градуса. Модель осталась последним запасным путём — она отвечает по
+  // памяти, а Туту по факту.
+  const fromHotels = mcp ? await askTutu(mcp, city) : null;
+  const found = fromHotels ?? (await askModel(city));
+  resolved.set(key, found);
+  return found;
+}
+
+/**
+ * Координаты города по его отелям.
+ *
+ * Один отель мог бы стоять на выселках, поэтому берётся медиана: она не
+ * сдвигается от одного далёкого объекта. Города без отелей так не находятся —
+ * это честный предел метода, а не ошибка.
+ */
+async function askTutu(mcp: McpClient, city: string): Promise<Coordinates | null> {
+  const raw = await mcp.callToolSafe<{
+    hotels?: Array<{ location?: { lat?: number; lng?: number } }>;
+  }>('search_hotels', {
+    city_name: city,
+    check_in: HOTEL_PROBE_IN,
+    check_out: HOTEL_PROBE_OUT,
+    adults: 2,
+    page_size: 8,
+  });
+
+  const points = (raw?.hotels ?? [])
+    .map((hotel) => hotel.location)
+    .filter((at): at is { lat: number; lng: number } =>
+      typeof at?.lat === 'number' && typeof at?.lng === 'number',
+    );
+
+  if (points.length === 0) return null;
+
+  const lat = median(points.map((at) => at.lat));
+  const lon = median(points.map((at) => at.lng));
+  if (!insideRussia(lat, lon)) return null;
+
+  return { lat, lon, source: 'catalog' };
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+/** Границы России с запасом — отсекают и выдумки модели, и промахи в порядке величины. */
+function insideRussia(lat: number, lon: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  return lat >= 40 && lat <= 82 && lon >= 19 && lon <= 191;
 }
 
 /** Пакетное разрешение: карта строится сразу по всем гостям. */
-export async function resolveMany(cities: string[]): Promise<Record<string, Coordinates>> {
+export async function resolveMany(
+  cities: string[],
+  mcp?: McpClient,
+): Promise<Record<string, Coordinates>> {
   const unique = [...new Set(cities.map((city) => city.trim()).filter(Boolean))];
   const pairs = await Promise.all(
-    unique.map(async (city) => [city, await resolveCoordinates(city)] as const),
+    unique.map(async (city) => [city, await resolveCoordinates(city, mcp)] as const),
   );
 
   const output: Record<string, Coordinates> = {};
@@ -116,9 +194,7 @@ async function askModel(city: string): Promise<Coordinates | null> {
 
   const lat = Number(parsed?.lat);
   const lon = Number(parsed?.lon);
-  // Границы России с запасом — отсекают и выдумки, и промахи в порядке величины.
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  if (lat < 40 || lat > 82 || lon < 19 || lon > 191) return null;
+  if (!insideRussia(lat, lon)) return null;
 
   return { lat, lon, source: 'ai' };
 }

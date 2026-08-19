@@ -133,8 +133,8 @@ export async function planEvent(
   // Города гостей и места события известны до расчёта — отдаём их сразу,
   // чтобы карта появилась прежде, чем посчитан первый маршрут.
   const [knownCoordinates, startCoordinates] = await Promise.all([
-    resolveMany(guests.map((guest) => guest.city)),
-    resolveCoordinates(when.startCity),
+    resolveMany(guests.map((guest) => guest.city), mcp),
+    resolveCoordinates(when.startCity, mcp),
   ]);
   options.onGeo?.({ coordinates: knownCoordinates, destination: startCoordinates });
 

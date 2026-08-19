@@ -103,7 +103,10 @@ function Organizer() {
   const [demoStays, setDemoStays] = useState<Record<string, { options: DemoStay[]; note: string }>>({});
 
   const [title, setTitle] = useState('Свадьба Ани и Бориса');
-  const [destination, setDestination] = useState(draft?.destination || 'Суздаль');
+  // Коломна, а не Суздаль: из Суздаля Туту не продаёт ни одного обратного
+  // рейса, и умолчание встречало бы человека четырьмя застрявшими гостями.
+  // Суздаль остался вторым сценарием в демо — там это уместно как пример.
+  const [destination, setDestination] = useState(draft?.destination || 'Коломна');
   // Событие может закончиться в другом городе: свадьба в Суздале, проводы во Владимире.
   const [endCity, setEndCity] = useState(draft?.endCity || '');
   const [date, setDate] = useState(draft?.date || '2026-09-11');

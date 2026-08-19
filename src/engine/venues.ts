@@ -65,7 +65,7 @@ export async function suggestVenues(
     return { options: [], probedCities: [], note: 'Нужен хотя бы один гость с городом.' };
   }
 
-  const candidates = await pickCandidates(origins);
+  const candidates = await pickCandidates(mcp, origins);
   if (candidates.length === 0) {
     return { options: [], probedCities: [], note: 'Не удалось подобрать города-кандидаты.' };
   }
@@ -103,8 +103,8 @@ export async function suggestVenues(
  * Геометрия здесь только отбирает, кого проверять: доказывает удобство
  * исключительно живой ответ Туту.
  */
-async function pickCandidates(origins: string[]): Promise<string[]> {
-  const points = await Promise.all(origins.map((city) => resolveCoordinates(city)));
+async function pickCandidates(mcp: McpClient, origins: string[]): Promise<string[]> {
+  const points = await Promise.all(origins.map((city) => resolveCoordinates(city, mcp)));
   const known = points.filter((point): point is Coordinates => point !== null);
   if (known.length === 0) return HUBS.filter((hub) => hub.national).map((hub) => hub.name);
 
