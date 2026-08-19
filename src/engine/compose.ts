@@ -104,23 +104,44 @@ export function feasibleConnections(city: string, inbound: Hop[], outbound: Hop[
  * Признаком ночи считается попадание в интервал отметки 03:00 — если пассажир
  * находится в городе в это время, ему нужна кровать, какой бы формально
  * длины ни было ожидание.
+ *
+ * Три часа ночи — это три часа ночи **в том городе, где человек ждёт**, а не
+ * там, где стоит сервер. Раньше считалось через `setHours`, то есть в поясе
+ * машины: на моей выходило московское время, на сборочной — UTC, на стенде —
+ * центральноевропейское, и один и тот же маршрут получал разный ответ про
+ * ночёвку. Теперь время берётся так, как оно написано в строке Туту, вместе
+ * с её смещением.
  */
 export function nightBetween(
   arrivalIso: string,
   departureIso: string,
 ): { checkIn: string; checkOut: string } | null {
-  const arrival = new Date(arrivalIso);
-  const departure = new Date(departureIso);
+  const arrival = localClock(arrivalIso);
+  const departure = localClock(departureIso);
+  if (!arrival || !departure) return null;
 
   const probe = new Date(arrival);
-  probe.setHours(3, 0, 0, 0);
-  if (probe < arrival) probe.setDate(probe.getDate() + 1);
+  probe.setUTCHours(3, 0, 0, 0);
+  if (probe < arrival) probe.setUTCDate(probe.getUTCDate() + 1);
   if (probe > departure) return null;
 
   // Заезд — накануне той ночи, выезд — утром после неё.
   const checkIn = new Date(probe);
-  checkIn.setDate(checkIn.getDate() - 1);
+  checkIn.setUTCDate(checkIn.getUTCDate() - 1);
   return { checkIn: isoDate(checkIn), checkOut: isoDate(probe) };
+}
+
+/**
+ * Настенные часы точки как момент времени.
+ *
+ * Смещение из строки отбрасывается намеренно: «2026-09-11T20:49:00+03:00»
+ * превращается в 20:49 UTC. Сравнивать такие моменты между собой можно —
+ * у прибытия и отправления в одном городе смещение одинаковое, — а вот
+ * пересчитывать их в чужой пояс нельзя.
+ */
+function localClock(iso: string): Date | null {
+  const at = new Date(`${iso.slice(0, 19)}Z`);
+  return Number.isNaN(at.getTime()) ? null : at;
 }
 
 /**
@@ -220,10 +241,8 @@ export function directJourney(hop: Hop): Journey {
 }
 
 function isoDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  // Дата берётся в тех же настенных часах, что и всё остальное здесь.
+  return date.toISOString().slice(0, 10);
 }
 
 /**
