@@ -80,8 +80,11 @@ const SECURITY_HEADERS: Record<string, string> = {
   'content-security-policy': [
     "default-src 'self'",
     "img-src 'self' data:",
-    "style-src 'self' 'unsafe-inline'",
-    "font-src 'self' data:",
+    // Шрифты берутся у Google Fonts: без этих двух источников политика
+    // молча роняет типографику до системной. У меня это не было заметно —
+    // браузер держал шрифты в кэше с прошлых заходов.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "script-src 'self'",
     // Ходим только к себе: Туту опрашивает сервер, а не браузер.
     "connect-src 'self'",
