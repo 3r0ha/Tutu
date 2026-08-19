@@ -7,7 +7,7 @@
  * предположений, после — список фактов, на которые можно опираться.
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { FileCollection } from './collection.ts';
 import type { Block } from '../domain/blocks.ts';
 
@@ -151,8 +151,21 @@ export async function updateInvite(
   patch: InvitePatch,
 ): Promise<Invite | null> {
   const invite = await invites.get(id);
-  if (!invite || invite.manageKey !== manageKey) return null;
+  if (!invite || !sameKey(invite.manageKey, manageKey)) return null;
   return invites.put({ ...invite, ...patch });
+}
+
+/**
+ * Сравнение ключа за постоянное время.
+ *
+ * Обычное `!==` выходит из сравнения на первом несовпавшем символе, и по
+ * времени ответа ключ теоретически подбирается посимвольно. Через сеть это
+ * почти неосуществимо, но стоит сравнение ровно ничего.
+ */
+function sameKey(expected: string, given: string): boolean {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(given);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /** Все события, к которым есть ключ управления, — рабочий стол организатора. */

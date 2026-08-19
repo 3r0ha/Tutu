@@ -24,6 +24,31 @@ const ALLOWED: Record<string, string> = {
 
 const MAX_BYTES = 4 * 1024 * 1024;
 
+/**
+ * Первые байты файла для каждого разрешённого формата.
+ *
+ * У WebP и GIF сигнатура составная: `RIFF....WEBP` и `GIF8?a`, поэтому
+ * проверяются обе части, а не только начало.
+ */
+function looksLike(type: string, bytes: Buffer): boolean {
+  switch (type) {
+    case 'image/jpeg':
+      return bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    case 'image/png':
+      return bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    case 'image/webp':
+      return (
+        bytes.length > 12 &&
+        bytes.subarray(0, 4).toString('latin1') === 'RIFF' &&
+        bytes.subarray(8, 12).toString('latin1') === 'WEBP'
+      );
+    case 'image/gif':
+      return bytes.length > 6 && /^GIF8[79]a$/.test(bytes.subarray(0, 6).toString('latin1'));
+    default:
+      return false;
+  }
+}
+
 /** Возвращает публичный адрес файла или `null`, если он не прошёл проверку. */
 export async function saveUpload(base64: string, type: string): Promise<string | null> {
   const extension = ALLOWED[type];
@@ -40,6 +65,10 @@ export async function saveUpload(base64: string, type: string): Promise<string |
   }
 
   if (bytes.length === 0 || bytes.length > MAX_BYTES) return null;
+  // Заявленному типу верить нельзя: он приходит от клиента и подставляется
+  // свободно. Расширение файла на диске определяет, с каким `content-type`
+  // мы его потом отдадим, поэтому тип подтверждается сигнатурой содержимого.
+  if (!looksLike(type, bytes)) return null;
 
   const name = createHash('sha256').update(bytes).digest('hex').slice(0, 24) + extension;
 

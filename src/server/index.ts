@@ -33,6 +33,7 @@ import {
 import { planSeating } from '../engine/seating.ts';
 import { parseEventIntent } from '../ai/intent.ts';
 import { aiEnabled, getProvider } from '../ai/provider.ts';
+import { checkLimit, clientKey, HEAVY, LIGHT, MEDIUM, UPLOAD, type Limit } from './limits.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WEB_DIR = join(ROOT, 'app', 'dist');
@@ -60,11 +61,69 @@ const MIME: Record<string, string> = {
   '.json': 'application/json; charset=utf-8',
 };
 
+/**
+ * За обратным прокси настоящий адрес клиента приходит в заголовке. Верить ему
+ * можно только когда прокси действительно наш — иначе ограничение частоты
+ * обходится одной подделанной строкой.
+ */
+const TRUST_PROXY = process.env.SKLEJKA_TRUST_PROXY === '1';
+
+/**
+ * Заголовки безопасности.
+ *
+ * Страница приглашения публичная и содержит пользовательский текст, поэтому
+ * политика содержимого запрещает всё, чего мы сами не отдаём. `unsafe-inline`
+ * для стилей оставлен намеренно: цвет страницы организатор выбирает свой, и он
+ * приезжает переменными в атрибуте `style`. Скрипты такого исключения не имеют.
+ */
+const SECURITY_HEADERS: Record<string, string> = {
+  'content-security-policy': [
+    "default-src 'self'",
+    "img-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
+    "script-src 'self'",
+    // Ходим только к себе: Туту опрашивает сервер, а не браузер.
+    "connect-src 'self'",
+    // Внутрь себя ничего не встраиваем и встраивать себя не даём.
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; '),
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+  'x-frame-options': 'DENY',
+  // Ни одно из этих устройств продукту не нужно.
+  'permissions-policy': 'geolocation=(), camera=(), microphone=(), payment=()',
+};
+
 const server = createServer((request, response) => {
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) response.setHeader(name, value);
+
   handle(request, response).catch((error: unknown) => {
-    sendJson(response, 500, { error: error instanceof Error ? error.message : 'internal error' });
+    // Наружу уходит факт отказа, а не внутренности: текст исключения может
+    // содержать пути и параметры запроса к Туту.
+    console.error('необработанная ошибка:', error);
+    sendJson(response, 500, { error: 'внутренняя ошибка' });
   });
 });
+
+/**
+ * Проверка частоты перед обработкой.
+ *
+ * Возвращает `true`, когда запрос отбит и ответ уже отправлен.
+ */
+function throttled(request: IncomingMessage, response: ServerResponse, limit: Limit): boolean {
+  const key = clientKey(request.socket.remoteAddress, request.headers['x-forwarded-for'], TRUST_PROXY);
+  const verdict = checkLimit(key, limit);
+  if (verdict.allowed) return false;
+
+  response.setHeader('retry-after', String(verdict.retryAfterSec));
+  sendJson(response, 429, {
+    error: `слишком часто, попробуйте через ${verdict.retryAfterSec} с`,
+  });
+  return true;
+}
 
 async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
@@ -76,34 +135,44 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
     // Интерфейс должен знать о выключенной модели заранее, а не по отказу.
     return sendJson(response, 200, { ai: aiEnabled() });
   }
+  // Расчёт маршрутов стоит сотен обращений к Туту — он считается штучно.
   if (url.pathname === '/api/plan') {
+    if (throttled(request, response, HEAVY)) return;
     return handlePlan(url, response);
   }
   if (url.pathname === '/api/event' && request.method === 'POST') {
+    if (throttled(request, response, HEAVY)) return;
     return handleEvent(request, response);
   }
   if (url.pathname === '/api/intent' && request.method === 'POST') {
+    if (throttled(request, response, MEDIUM)) return;
     return handleIntent(request, response);
   }
   if (url.pathname === '/api/invite' && request.method === 'POST') {
+    if (throttled(request, response, MEDIUM)) return;
     return handleCreateInvite(request, response);
   }
   if (url.pathname === '/api/events' && request.method === 'POST') {
     return handleListEvents(request, response);
   }
   if (url.pathname === '/api/venues' && request.method === 'POST') {
+    if (throttled(request, response, HEAVY)) return;
     return handleVenues(request, response);
   }
   if (url.pathname === '/api/stays' && request.method === 'POST') {
+    if (throttled(request, response, MEDIUM)) return;
     return handleStays(request, response);
   }
   if (url.pathname === '/api/rooms' && request.method === 'POST') {
+    if (throttled(request, response, MEDIUM)) return;
     return handleRooms(request, response);
   }
   if (url.pathname === '/api/purchase' && request.method === 'POST') {
+    if (throttled(request, response, MEDIUM)) return;
     return handlePurchase(request, response);
   }
   if (url.pathname === '/api/upload' && request.method === 'POST') {
+    if (throttled(request, response, UPLOAD)) return;
     return handleUpload(request, response);
   }
   if (url.pathname.startsWith('/uploads/')) {
@@ -111,6 +180,8 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   }
 
   // Рабочий стол организатора: доступ только по ключу управления.
+  if (throttled(request, response, LIGHT)) return;
+
   const manageRoute = url.pathname.match(/^\/api\/invite\/([a-z0-9]{4,32})\/manage\/([a-z0-9]{16,64})$/);
   if (manageRoute) {
     const [, id, key] = manageRoute;
