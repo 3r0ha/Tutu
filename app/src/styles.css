@@ -181,7 +181,14 @@ body {
   color: var(--muted);
   font-size: 20px;
   line-height: 1;
-  padding: 0 2px;
+  /* Крестик был 15×20 — попасть в него пальцем невозможно. Размер цели
+     нажатия задан отступами, а сам знак остался прежним. */
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
 }
 
 .remove:hover { color: var(--red); }
@@ -685,7 +692,14 @@ a.ghost {
   color: var(--muted);
   font-size: 20px;
   line-height: 1;
-  padding: 0 2px;
+  /* Крестик был 15×20 — попасть в него пальцем невозможно. Размер цели
+     нажатия задан отступами, а сам знак остался прежним. */
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
 }
 
 .guests .remove:hover { color: var(--red); }
@@ -2853,3 +2867,37 @@ a.ghost {
   font-size: 14px;
   line-height: 1.6;
 }
+
+
+/* ---------------- Размер целей нажатия ---------------- */
+
+/* Текстовые ссылки-кнопки внутри карточек: 20 пикселей высоты мало и мышью,
+   и тем более пальцем. */
+.link {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Раскрывающиеся строки настройки: вся строка должна быть целью, а не буквы. */
+.intent-block > summary,
+.other-city > summary {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+/* На сенсорном экране цель меньше сорока точек — это промах через раз.
+   Правило продублировано по ширине экрана: `hover: none` не срабатывает
+   в браузере без эмуляции касаний, а узкий экран — почти всегда телефон. */
+@media (hover: none), (max-width: 640px) {
+  .canvas-palette .swatch { width: 40px; height: 40px; }
+  .block-tools.floating .icon-small { width: 40px; height: 40px; }
+  .icon-small { min-width: 36px; min-height: 36px; }
+  .inserter-button { min-height: 36px; }
+  .cover { width: 48px; height: 48px; }
+  .swatch.custom input[type='color'] { min-height: 40px; }
+}
+
+/* Подпись роли в документации была на грани читаемости. */
+.docs-role-tag { font-size: 12px; }
