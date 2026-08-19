@@ -17,6 +17,15 @@
  */
 
 export interface Limit {
+  /**
+   * Имя счётчика.
+   *
+   * Без него все пределы делили одно окно на адрес, и восемь запросов при
+   * обычной загрузке страницы съедали квоту тяжёлого расчёта: человек получал
+   * отказ на первой же попытке посчитать. Считать надо раздельно — лёгкое
+   * не должно расходовать тяжёлое.
+   */
+  name: string;
   /** Сколько запросов разрешено в окне. */
   quota: number;
   /** Длина окна, мс. */
@@ -24,13 +33,13 @@ export interface Limit {
 }
 
 /** Расчёт маршрутов: сотни обращений к Туту на каждый вызов. */
-export const HEAVY: Limit = { quota: 6, windowMs: 60_000 };
+export const HEAVY: Limit = { name: 'heavy', quota: 6, windowMs: 60_000 };
 /** Запросы, которые ходят в Туту, но одним-двумя вызовами. */
-export const MEDIUM: Limit = { quota: 30, windowMs: 60_000 };
+export const MEDIUM: Limit = { name: 'medium', quota: 30, windowMs: 60_000 };
 /** Чтение своего же события и статики. */
-export const LIGHT: Limit = { quota: 240, windowMs: 60_000 };
+export const LIGHT: Limit = { name: 'light', quota: 240, windowMs: 60_000 };
 /** Загрузка картинок: мегабайты на диск. */
-export const UPLOAD: Limit = { quota: 20, windowMs: 60_000 };
+export const UPLOAD: Limit = { name: 'upload', quota: 20, windowMs: 60_000 };
 
 const MAX_TRACKED = 5_000;
 
@@ -47,8 +56,10 @@ export interface Verdict {
   retryAfterSec: number;
 }
 
-export function checkLimit(key: string, limit: Limit, now = Date.now()): Verdict {
+export function checkLimit(client: string, limit: Limit, now = Date.now()): Verdict {
   const since = now - limit.windowMs;
+  // Счётчик свой у каждого предела: иначе лёгкие запросы расходуют тяжёлые.
+  const key = `${limit.name}:${client}`;
 
   let window = windows.get(key);
   if (!window) {

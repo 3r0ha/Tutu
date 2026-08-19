@@ -12,7 +12,8 @@ import { beforeEach, describe, it } from 'node:test';
 
 import { checkLimit, clientKey, resetLimits, type Limit } from './limits.ts';
 
-const LIMIT: Limit = { quota: 3, windowMs: 1000 };
+const LIMIT: Limit = { name: 'test', quota: 3, windowMs: 1000 };
+const OTHER: Limit = { name: 'other', quota: 3, windowMs: 1000 };
 
 describe('ограничение частоты', () => {
   beforeEach(resetLimits);
@@ -44,6 +45,15 @@ describe('ограничение частоты', () => {
     // Ушёл первый — освободилось ровно одно место, а не все три.
     assert.equal(checkLimit('a', LIMIT, now + 1050).allowed, true);
     assert.equal(checkLimit('a', LIMIT, now + 1060).allowed, false);
+  });
+
+  it('разные пределы не расходуют друг друга', () => {
+    // Так и вышло у живого человека: восемь запросов при загрузке страницы
+    // заняли квоту тяжёлого расчёта, и первая же попытка посчитать отбилась.
+    const now = 1_000_000;
+    for (let i = 0; i < 3; i += 1) checkLimit('a', OTHER, now);
+    assert.equal(checkLimit('a', OTHER, now).allowed, false);
+    assert.equal(checkLimit('a', LIMIT, now).allowed, true, 'тяжёлый предел не должен зависеть от лёгкого');
   });
 
   it('адреса считаются раздельно', () => {
