@@ -1,0 +1,13 @@
+{
+  "name": "Склейка — маршруты, которых нет в поиске",
+  "short_name": "Склейка",
+  "description": "Собирает поездки из билетов, которые продаются по отдельности",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0f16",
+  "theme_color": "#0b0f16",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

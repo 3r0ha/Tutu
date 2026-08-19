@@ -1,0 +1,16 @@
+{
+  "name": "sklejka",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Маршрутизатор составных поездок поверх Tutu MCP: собирает маршруты, которых нет в прямом поиске",
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "start": "node src/server/index.ts",
+    "verify": "node src/cli/verify.ts",
+    "bench": "node src/cli/bench.ts",
+    "test": "node --test \"src/**/*.test.ts\" && npm --prefix app test"
+  }
+}
